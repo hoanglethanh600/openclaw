@@ -148,3 +148,47 @@ it.each([
     }
   },
 );
+
+it.each([1280, 320] as const)(
+  "keeps Compact on the View context row at %spx and stays open while it runs",
+  async (width) => {
+    await page.viewport(width, 720);
+    container.style.cssText = "position:fixed;bottom:16px;left:16px;right:16px";
+    const pending = Promise.withResolvers<void>();
+    const onCompact = vi.fn(() => pending.promise);
+    renderComposerInto(
+      container,
+      createComposerProps({
+        onCompact,
+        selectedSession: {
+          key: "main",
+          kind: "direct",
+          updatedAt: 1,
+          totalTokens: 190_000,
+          contextTokens: 200_000,
+        },
+      }),
+    );
+    const trigger = container.querySelector<HTMLElement>(".context-ring")!;
+    const popover = container.querySelector<HTMLElement>(".context-usage [data-anchored-overlay]")!;
+    await page.elementLocator(trigger).click();
+    const open = popover.querySelector<HTMLElement>(".context-usage__open")!;
+    const compact = popover.querySelector<HTMLButtonElement>(".chat-context__compact")!;
+    await expect.poll(() => isPainted(open) && isPainted(compact)).toBe(true);
+    const link = open.getBoundingClientRect();
+    const action = compact.getBoundingClientRect();
+    expect(Math.abs(link.top + link.height / 2 - (action.top + action.height / 2))).toBeLessThan(1);
+    expect(link.right).toBeLessThan(action.left);
+    expect(action.right).toBeLessThanOrEqual(popover.getBoundingClientRect().right);
+    expect(getComputedStyle(compact).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+
+    await page.elementLocator(compact).click();
+    await expect.poll(() => compact.textContent).toBe("Compacting");
+    expect(compact.disabled).toBe(true);
+    expect(popover.checkVisibility()).toBe(true);
+    pending.resolve();
+    await expect.poll(() => compact.textContent).toBe("Compact");
+    expect(popover.checkVisibility()).toBe(true);
+    expect(onCompact).toHaveBeenCalledOnce();
+  },
+);

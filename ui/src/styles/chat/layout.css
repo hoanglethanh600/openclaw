@@ -1049,6 +1049,58 @@ openclaw-pending-session-create {
 .context-usage__open:hover:not(:disabled) svg {
   transform: translateX(2px);
 }
+.context-usage__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+}
+/* Shared Compact control: the composer popover and the context panel size it. */
+.chat-context__compact {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+.chat-context__compact--high {
+  background: var(--primary);
+  box-shadow: none;
+  color: var(--primary-foreground);
+}
+.chat-context__compact:disabled {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--muted);
+}
+.chat-context__compact .btn__spinner {
+  width: 12px;
+  height: 12px;
+}
+@media (hover: hover) {
+  .chat-context__compact:not(:disabled):not(.chat-context__compact--high):hover {
+    background: var(--bg-hover);
+  }
+  .chat-context__compact--high:not(:disabled):hover {
+    background: color-mix(in srgb, var(--primary) 88%, var(--text-strong));
+  }
+}
 .context-usage__separator {
   height: 1px;
   margin: 10px 0;
