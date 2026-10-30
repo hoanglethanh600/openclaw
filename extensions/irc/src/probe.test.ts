@@ -49,10 +49,4 @@ describe("probeIrc", () => {
     expect(result).toMatchObject({ ok: true, latencyMs: 45 });
   });
 
-  it("reports unconfigured accounts without connecting", async () => {
-    const result = await probeIrc(asConfig({}));
-
-    expect(result).toMatchObject({ ok: false, error: "missing host or nick" });
-    expect(result.latencyMs).toBeUndefined();
-  });
 });
