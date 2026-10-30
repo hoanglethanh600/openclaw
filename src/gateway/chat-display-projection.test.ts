@@ -561,7 +561,7 @@ const terminal = (runId = "run-a") => ({
 const projectedIds = (messages: unknown[]) =>
   projectChatDisplayMessages(messages).map((message) => message["__openclaw"]);
 
-it.each(["length", "stop"])("hides empty %s attempts while preserving tool material", (stopReason) => {
+it.each(["length", "stop"])("hides empty %s attempts", (stopReason) => {
   const empty = assistant([text("")], { stopReason, __openclaw: { runId: "run-empty" } });
   const thinking = { ...empty, content: [text(""), { type: "thinking", thinking: "" }] };
   const toolMessage = assistant([tool], { stopReason });
