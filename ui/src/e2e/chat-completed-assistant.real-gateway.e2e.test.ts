@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { expect, it } from "vitest";
+import { expect, it, onTestFinished } from "vitest";
 import { persistColdLoadWarmState } from "../../../scripts/lib/control-ui-bench-warm-state.ts";
 import { appendTranscriptMessages } from "../../../src/config/sessions/session-accessor.ts";
 import { ensureGatewayOwnerProfile } from "../../../src/state/user-profiles.ts";
@@ -131,7 +131,14 @@ suite.define(() => {
       },
       async ({ page }) => {
         // Reuse the loading fixture's passive frame boundary, retaining only history facts.
-        type HistoryRead = { cursor: boolean; completed: boolean; ok?: boolean; kind?: string };
+        type HistoryRead = {
+          cursor: boolean;
+          completed: boolean;
+          ok?: boolean;
+          kind?: string;
+          messageCount?: number;
+          hasAnswer?: boolean;
+        };
         const reads: HistoryRead[] = [];
         page.on("websocket", (socket) => {
           const pending = new Map<string, { read: HistoryRead; subscribed: boolean }>();
@@ -141,7 +148,7 @@ suite.define(() => {
             const subscribed = frame?.method === "sessions.messages.subscribe";
             const history = subscribed
               ? asOptionalRecord(params?.initialHistory)
-              : frame?.method === "chat.startup"
+              : frame?.method === "chat.startup" || frame?.method === "chat.history"
                 ? params
                 : undefined;
             if (
@@ -168,10 +175,13 @@ suite.define(() => {
             const body = asOptionalRecord(frame.payload);
             const initial = asOptionalRecord(body?.initialHistory);
             const history = selected.subscribed ? asOptionalRecord(initial?.payload) : body;
+            const messages = Array.isArray(history?.messages) ? history.messages : undefined;
             Object.assign(selected.read, {
               completed: true,
               ok: frame.ok === true && (!selected.subscribed || initial?.ok === true),
               kind: typeof history?.kind === "string" ? history.kind : "window",
+              messageCount: messages?.length,
+              hasAnswer: messages?.some((message) => messageId(message) === "answer"),
             });
             pending.delete(String(frame.id));
           });
@@ -185,6 +195,12 @@ suite.define(() => {
           draft: string;
           reads: HistoryRead[];
         }> = [];
+        onTestFinished(async () => {
+          await writeFile(
+            path.join(suite.artifactDir, "history-proof.json"),
+            JSON.stringify({ observations, reads }, null, 2),
+          );
+        });
         await page.goto(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
         await waitForControlUiGatewayReady(page);
         await assertServedUi(page, suite.server.baseUrl);
@@ -320,10 +336,6 @@ suite.define(() => {
         if (captureMedia) {
           await page.waitForTimeout(700); // Keep the settled result legible.
         }
-        await writeFile(
-          path.join(suite.artifactDir, "history-proof.json"),
-          JSON.stringify({ observations }, null, 2),
-        );
         for (const observation of observations) {
           expect(observation.ids, observation.phase).toEqual(expectedIds);
           expect(observation.visible, observation.phase).toEqual(visibleOrder);
