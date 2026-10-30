@@ -143,7 +143,9 @@ canonical candidate containing paths observed by a complete sandbox scan, so
 accepted guest-created files need not be in the host Git index. These paths are
 only recovery candidates: their current content must reproduce the exact saved
 baseline before replacement metadata is accepted. Recovery keeps other live
-edits and pending receipts. If neither can be verified, the error names
+edits and pending receipts. Repair can read `.openclaw/.pnpm-store/` when verifying
+an older saved baseline; subsequent synchronization still keeps new cache contents
+local. If neither can be verified, the error names
 both preserved paths and a command to compare them. That command only inspects
 differences; it does not restore the missing baseline. Keep both directories and
 ask a Gateway administrator to recover the saved baseline inventory before retrying.

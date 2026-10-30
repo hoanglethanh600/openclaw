@@ -18,6 +18,7 @@ const BUILD_CACHE_ROOT_PATHS = [
   ".artifacts/build-all-cache",
   ".artifacts/build-cache-inputs",
 ] as const;
+const PNPM_FALLBACK_STORE_ROOT_PATH = ".openclaw/.pnpm-store";
 const DERIVED_WORKSPACE_ROOT_PATHS = [
   ".cache/vitest",
   ".cache/bun-transpiler",
@@ -25,7 +26,7 @@ const DERIVED_WORKSPACE_ROOT_PATHS = [
   ".cache/ms-playwright",
   ".local/share/pnpm/store",
   // pnpm falls back here for projects beneath the protected .openclaw self-bind.
-  ".openclaw/.pnpm-store",
+  PNPM_FALLBACK_STORE_ROOT_PATH,
   ".artifacts/vitest-workers",
   ".artifacts/vitest-worker-cache",
   ".artifacts/vitest-shard-timings.json",
@@ -63,6 +64,7 @@ export const WORKSPACE_PATH_EXCLUSIONS_JS = `
 ${STAGED_INPUT_PATHS_JS}
 ${MANAGED_SANDBOX_SKILLS_PATH_JS}
 const DERIVED_WORKSPACE_ROOT_PATHS = ${JSON.stringify(DERIVED_WORKSPACE_ROOT_PATHS)};
+const PNPM_FALLBACK_STORE_ROOT_PATH = ${JSON.stringify(PNPM_FALLBACK_STORE_ROOT_PATH)};
 const BUILD_CACHE_ROOT_PATHS = ${JSON.stringify(BUILD_CACHE_ROOT_PATHS)};
 function isBuildCacheWorkspacePath(relativePath) {
   return BUILD_CACHE_ROOT_PATHS.some((root) => relativePath === root || relativePath.startsWith(root + "/"));
@@ -85,7 +87,7 @@ function isRuntimeOwnedWorkspacePath(relativePath) {
     (root) => relativePath === root || relativePath.startsWith(root + "/"),
   );
 }
-function isDerivedWorkspacePath(relativePath, retainedInput = false, excludeBuildCaches = false) {
+function isDerivedWorkspacePath(relativePath, retainedInput = false, excludeBuildCaches = false, includeLegacyPnpmStore = false) {
   if (isRuntimeOwnedWorkspacePath(relativePath)) {
     return true;
   }
@@ -94,7 +96,8 @@ function isDerivedWorkspacePath(relativePath, retainedInput = false, excludeBuil
   }
   if (excludeBuildCaches && isBuildCacheWorkspacePath(relativePath)) return true;
   if (DERIVED_WORKSPACE_ROOT_PATHS.some(
-    (root) => relativePath === root || relativePath.startsWith(root + "/"),
+    (root) => (!includeLegacyPnpmStore || root !== PNPM_FALLBACK_STORE_ROOT_PATH) &&
+      (relativePath === root || relativePath.startsWith(root + "/")),
   )) {
     return true;
   }
@@ -130,6 +133,7 @@ export const {
     relativePath: string,
     retainedInput?: boolean,
     excludeBuildCaches?: boolean,
+    includeLegacyPnpmStore?: boolean,
   ) => boolean;
   isRuntimeOwnedWorkspacePath: (relativePath: string) => boolean;
   buildCacheInputPaths: (paths?: Iterable<string>) => Set<string>;
