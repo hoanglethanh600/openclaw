@@ -71,6 +71,38 @@ export function registerGatewayCronPublicationTests({
     );
   });
 
+  it("publishes both physical global identities when execution changes agents", async () => {
+    const cfg = createCronConfig("server-cron-global-binding-broadcast");
+    cfg.session = { ...cfg.session, scope: "global" };
+    cfg.agents = { ...cfg.agents, entries: { main: {}, ops: {}, research: {} } };
+    const broadcast = vi.fn();
+    await withCronService(
+      cfg,
+      async (state) => {
+        const job = await addAgentTurnJob(state, "Global review", "Review the plan", {
+          agentId: "ops",
+          enabled: false,
+          sessionTarget: "session:global",
+          schedule: { kind: "every", everyMs: 3_600_000 },
+        });
+        broadcast.mockClear();
+        await state.cron.update(job.id, { agentId: "research" });
+        expect(
+          broadcast.mock.calls
+            .filter(([event]) => event === "sessions.changed")
+            .map(([, payload]) => {
+              const binding = requireRecord(payload, "global binding payload");
+              return [binding.sessionKey, binding.agentId];
+            }),
+        ).toEqual([
+          ["global", "ops"],
+          ["global", "research"],
+        ]);
+      },
+      { broadcast },
+    );
+  });
+
   it("invalidates cron readers without disclosing a retargeted job to its former audience", async () => {
     const cfg = createCronConfig("server-cron-inventory-invalidation");
     const reader = createBroadcastPeer("reader", true);

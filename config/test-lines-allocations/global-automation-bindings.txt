@@ -1,0 +1,2 @@
+# Physical global binding and distinct index/publication/archive guards.
+106
