@@ -1,13 +1,6 @@
-import { randomUUID } from "node:crypto";
-import {
-  decisionBatchV2ToV1,
-  decisionResultV1ToV2,
-  validateDecisionBatchV2,
-} from "openclaw/plugin-sdk/decisions";
+import { decisionResultV1ToV2 } from "openclaw/plugin-sdk/decisions";
 import type {
   DecisionBatch,
-  DecisionBatchResult,
-  DecisionBatchV2,
   DecisionProviderV1,
   DecisionProviderV2,
   DecisionProviderContextV2,
@@ -18,6 +11,11 @@ import { omitNullRequestHeaders } from "openclaw/plugin-sdk/provider-request-hea
 import { resolveSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import manifest from "../openclaw.plugin.json" with { type: "json" };
 import { hasCredentials, providerBaseUrl, type RuntimeConfig } from "./config.js";
+import {
+  decodeTypeSafeDecisionResult,
+  encodeTypeSafeDecisionQuestions,
+  translateTypeSafeDecisionBatch,
+} from "./decision-codec.js";
 import { decisionFailure } from "./errors.js";
 import type { ImageAssets } from "./schema.js";
 
@@ -137,12 +135,7 @@ function createDecisionEvaluator(
     if (remaining <= 0) {
       return { status: "unavailable", reason: "transport" };
     }
-    const questions = Object.fromEntries(
-      Object.entries(batch.questions).map(([id, q]) => [
-        id,
-        q.type === "boolean" ? { ...q, type: "noul" } : q,
-      ]),
-    );
+    const questions = encodeTypeSafeDecisionQuestions(batch);
     try {
       const { evaluation } = await evaluateTypeSafe(
         { state: batch.state, questions, model: context.model },
@@ -165,90 +158,14 @@ function createDecisionEvaluator(
         assets,
       );
       context.signal.throwIfAborted();
-      const answers: Record<string, DecisionBatchResult["answers"][string]> = {};
-      for (const [id, answer] of Object.entries(evaluation.answers)) {
-        if (answer.type === "noul") {
-          answers[id] = { type: "boolean", probabilityTrue: answer.noul };
-        } else if (answer.type === "choice") {
-          answers[id] = answer;
-        } else {
-          const question = batch.questions[id];
-          if (!question || question.type !== "score") {
-            return { status: "unavailable", reason: "invalid-response" };
-          }
-          answers[id] = {
-            type: "score",
-            score: answer.score,
-            confidence: answer.confidence,
-            probabilities: question.criteria.map((_level, i) => answer.probabilities[String(i)]!),
-          };
-        }
-      }
-      return {
-        status: "ok",
-        result: {
-          model: evaluation.model,
-          answers,
-          usage: {
-            inputTokens: evaluation.usage.input_tokens,
-            outputTokens: evaluation.usage.output_tokens,
-          },
-        },
-      };
+      const result = decodeTypeSafeDecisionResult(batch, evaluation);
+      return result
+        ? { status: "ok", result }
+        : { status: "unavailable", reason: "invalid-response" };
     } catch (error) {
       context.signal.throwIfAborted();
       return decisionFailure(error);
     }
-  };
-}
-
-/** Preserve the existing question/result translation; only tagged image state adds assets. */
-function translateBatch(
-  batch: DecisionBatchV2,
-): { batch: DecisionBatch; assets?: ImageAssets } | undefined {
-  // Admit the full envelope before removing image bytes for the existing text translation.
-  if (!validateDecisionBatchV2(batch)) {
-    return undefined;
-  }
-  if (batch.state.type !== "image") {
-    const text = decisionBatchV2ToV1(batch);
-    return text ? { batch: text } : undefined;
-  }
-  const match = /^data:image\/(png|jpeg);base64,/.exec(batch.state.dataUri);
-  if (
-    !match ||
-    Object.values(batch.questions).some(
-      (question) =>
-        question.type !== "boolean" && question.type !== "choice" && question.type !== "score",
-    )
-  ) {
-    return undefined;
-  }
-  // TypeSafe replaces references inside strings; a UUID must not occur in caller text.
-  const callerText = JSON.stringify([batch.state.text, batch.questions]);
-  let ref = randomUUID();
-  while (callerText.includes(ref)) {
-    ref = randomUUID();
-  }
-  const translated = decisionBatchV2ToV1({
-    state:
-      batch.state.text === undefined
-        ? { type: "text", text: ref }
-        : { type: "json", value: [batch.state.text, ref] },
-    questions: batch.questions,
-  });
-  if (!translated) {
-    return undefined;
-  }
-  return {
-    batch: translated,
-    assets: {
-      [ref]: {
-        type: "image",
-        format: match[1] === "png" ? "png" : "jpg",
-        data_base64: batch.state.dataUri.slice(match[0].length),
-      },
-    },
   };
 }
 
@@ -318,7 +235,7 @@ export function createPreparedDecisionProvider(getConfig: () => RuntimeConfig): 
           ),
     },
     async evaluate(batch, context) {
-      const request = translateBatch(batch);
+      const request = translateTypeSafeDecisionBatch(batch);
       if (!request || (context.reasoning !== undefined && context.reasoning !== "auto")) {
         return { status: "unavailable", reason: "unsupported-input" };
       }
