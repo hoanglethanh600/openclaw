@@ -15,8 +15,6 @@ const IRC_RECONNECT_STABLE_MS = 60_000;
 
 export function createIrcReconnectBackoff() {
   let attempt = 0;
-  // Uptime is a duration, not a wall-clock reading: the monotonic clock keeps the stability
-  // window intact when the system clock steps.
   let connectedAt: number | undefined;
   return {
     markConnected: () => {
